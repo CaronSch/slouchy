@@ -1,0 +1,35 @@
+name: Build and Publish DMG Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build DMG
+        run: make release
+
+      - name: Verify build output
+        run: ls -lh dist/Slouchy.dmg
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Slouchy.dmg
+          generate_release_notes: true
+          fail_on_unmatched_files: true

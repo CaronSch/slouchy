@@ -1,0 +1,16 @@
+venv/
+.venv-release/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/posture.db
+build/
+dist/
+*.egg-info/
+.eggs/
+.DS_Store
+models/*.task
+voice_samples/
+out/
+metrics/github/latest.json
+metrics/github/snapshots/

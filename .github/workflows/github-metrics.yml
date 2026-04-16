@@ -1,0 +1,39 @@
+name: Snapshot GitHub Traffic and Downloads
+
+on:
+  schedule:
+    - cron: "20 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Collect GitHub metrics snapshot
+        env:
+          GH_METRICS_TOKEN: ${{ secrets.GH_METRICS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          METRICS_OUTPUT_DIR: out/github-metrics
+        run: python scripts/github_metrics_snapshot.py
+
+      - name: Upload private metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-metrics-${{ github.run_id }}
+          path: out/github-metrics
+          if-no-files-found: error
+          retention-days: 30
