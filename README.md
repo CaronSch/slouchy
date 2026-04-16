@@ -90,7 +90,7 @@ baselines when metric definitions change.
 
 ### 2. Detection — Seven Independent Signals
 
-Any one signal exceeding its threshold triggers slouching:
+Primary signals can trigger slouching directly; some secondary signals combine for robustness:
 
 | Signal | What it measures | What it catches |
 |--------|-----------------|-----------------|
@@ -105,14 +105,15 @@ Any one signal exceeding its threshold triggers slouching:
 All metrics are **scale-invariant** (dividing by shoulder width), so moving
 closer/further from the camera doesn't trigger false positives.
 
-Raw values are **EMA-smoothed** and require a **2-frame streak** to transition
+Raw values are **EMA-smoothed** and require a **3-frame bad streak** to enter slouch and an
+**8-frame good streak** to recover
 (hysteresis), so single noisy frames don't flip the state.
 
 ### 3. Escalation (State Machine)
 
 ```
 GOOD → SLOUCHING → TIER 1 (gentle) → TIER 2 (firm) → TIER 3 (nuclear)
-          10s          2 min              5 min
+          20s          2 min              5 min
 ```
 
 **Frequency escalation:** 3 gentle warnings in 30 min → tier 2. 2 firm
@@ -158,9 +159,9 @@ Other generators are still available:
 
 ```bash
 # Run the full test suite
-python -m pytest tests/ -v
+make test
 
-# 77 tests across posture, escalation, audio, tracker, dashboard, and menubar modules
+# 83 tests across posture, escalation, audio, tracker, dashboard, and menubar modules
 ```
 
 ## Privacy

@@ -33,7 +33,7 @@ CALIBRATION_DURATION_SECONDS = 5
 CALIBRATION_FILE = os.path.expanduser("~/.slouchy/calibration.json")
 
 # Escalation thresholds
-SLOUCH_TIER1_SECONDS = 10  # demo: was 20
+SLOUCH_TIER1_SECONDS = 20
 SLOUCH_TIER2_SECONDS = 120  # 2 minutes
 SLOUCH_TIER3_SECONDS = 300  # 5 minutes
 TIER1_FREQUENCY_LIMIT = 3  # 3rd gentle in 30 min triggers tier 2
