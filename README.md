@@ -40,14 +40,24 @@ python menubar.py
 A small icon appears in your macOS menubar. Its symbol changes by state
 (`✓` good posture, `⚠` slouching, `❓` tracking lost, `❌` camera issue, `⏸` paused).
 
-Click the icon to see:
-- **Status** — current posture state
-- **Streak** — how long you've maintained good posture
-- **Today's stats** — slouch time and monitoring time
-- **Monitoring submenu** — resume, pause 30m, pause 1h, pause until tomorrow
-- **Recalibrate** — re-capture your "good posture" baseline
-- **Open Dashboard** — view trends and recent events
-- **Camera** — pick camera index (0-3)
+### Download DMG directly
+- Portfolio: [Slouchy Download Page](https://nidhisingh.pages.dev/slouchy)
+- GitHub Releases: [View GitHub Releases](https://github.com/nidhi-singh02/slouchy/releases)
+
+### Important: Unsigned DMG (temporary)
+
+Current releases are not notarized yet, so macOS may show `"Slouchy.app" is damaged` on first open.
+
+Workaround:
+
+```bash
+cp -R /Volumes/Slouchy/Slouchy.app /Applications/
+xattr -dr com.apple.quarantine /Applications/Slouchy.app
+open /Applications/Slouchy.app
+```
+
+You only need to do this once per downloaded build.
+
 
 ### Terminal Mode
 
@@ -68,10 +78,6 @@ Opens an OpenCV window with live webcam, skeleton overlay, per-signal metrics,
 a posture deviation bar, and the escalation engine state. Press `c` to
 calibrate, `q` to quit.
 
-### Download DMG directly
-Direct download URLs:
-- Portfolio (primary): `https://nidhisingh.pages.dev/slouchy/Slouchy.dmg`
-- GitHub Releases (latest): `https://github.com/nidhi-singh02/slouchy/releases/latest/download/Slouchy.dmg`
 
 ## How It Works
 
@@ -145,33 +151,8 @@ export SLOUCHY_PHRASE_PRESET="hinglish_fun"
 ./venv/bin/python generate_voice.py
 ```
 
-You can also pass the preset as the 3rd CLI argument:
-
-```bash
-./venv/bin/python generate_voice.py "$ELEVENLABS_API_KEY" "$ELEVENLABS_VOICE_ID" "english_fun"
-```
-
 Other generators are still available:
 - `generate_voice_f5.py` (F5-TTS, local)
-
-## Building a Standalone .app
-
-Bundle as a native macOS app (no Python install needed to run):
-
-```bash
-make release
-```
-
-`make release` creates/uses an isolated `.venv-release` with
-`requirements-release.txt`, so packaging stays deterministic and avoids
-accidentally bundling extra dev dependencies.
-
-Artifacts:
-- `dist/Slouchy.app`
-- `dist/Slouchy.dmg`
-
-> **Note:** The `models/` directory and `phrases/` WAV files must be bundled.
-> `setup.py` is pre-configured to include them.
 
 ## Development
 
@@ -182,12 +163,6 @@ python -m pytest tests/ -v
 # 77 tests across posture, escalation, audio, tracker, dashboard, and menubar modules
 ```
 
-
-
-
-
-
-
 ## Privacy
 
 - Video frames are **never stored or transmitted**. Processing happens in-memory.
@@ -195,9 +170,3 @@ python -m pytest tests/ -v
   and tier numbers — no images, no landmarks, no personal data.
 - Calibration data (`~/.slouchy/calibration.json`) contains only numeric
   baseline ratios — not biometric data.
-
-
-
-## License
-
-MIT
