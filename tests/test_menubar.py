@@ -120,6 +120,13 @@ class TestConfidenceGate:
             camera_available=True,
             landmark_confidence=confidence,
         )
+        app.prefs = SimpleNamespace(
+            active_hours_enabled=False,
+            active_hours_start=540,
+            active_hours_end=1080,
+            sound_enabled=True,
+            text_notifications_enabled=True,
+        )
         app.engine = SimpleNamespace(update=lambda *_: None)
         app.audio = SimpleNamespace(play_tier=lambda *_: None)
         app.tracker = SimpleNamespace(log_slouch=lambda *_: None)

@@ -26,6 +26,8 @@ from escalation import EscalationEngine
 from posture import PostureDetector, SharedState
 from tracker import PostureTracker
 from dashboard import render_dashboard_html
+from preferences import in_active_hours, load_preferences, minutes_to_timestr
+from server import PORT, start_server
 
 
 # ── Status icons ──────────────────────────────────────────────────────
@@ -109,6 +111,9 @@ class SlouchyApp(rumps.App):
         # Render as a native template icon so it follows macOS menubar style.
         self.template = True
 
+        # ── Preferences ───────────────────────────────────────────────
+        self.prefs = load_preferences()
+
         # ── Backend ───────────────────────────────────────────────────
         self.shared_state = SharedState()
         self.detector = PostureDetector(
@@ -117,6 +122,18 @@ class SlouchyApp(rumps.App):
         self.engine = EscalationEngine()
         self.audio = AudioPlayer()
         self.tracker = PostureTracker()
+
+        # ── HTTP server ───────────────────────────────────────────────
+        self._prefs_lock = threading.Lock()
+        self._http_server = None
+        try:
+            self._http_server = start_server(
+                prefs=self.prefs,
+                prefs_lock=self._prefs_lock,
+                get_dashboard_html=self._build_dashboard_html,
+            )
+        except OSError:
+            pass
 
         # ── State ─────────────────────────────────────────────────────
         self._monitoring = False
@@ -337,6 +354,25 @@ class SlouchyApp(rumps.App):
             return
 
         now = time.monotonic()
+
+        # Active hours gate — checked before pause logic
+        if self.prefs.active_hours_enabled:
+            t = time.localtime()
+            current_minutes = t.tm_hour * 60 + t.tm_min
+            if not in_active_hours(
+                current_minutes,
+                self.prefs.active_hours_start,
+                self.prefs.active_hours_end,
+            ):
+                if self._session_id is not None:
+                    SlouchyApp._end_tracking_session(self)
+                start_str = minutes_to_timestr(self.prefs.active_hours_start)
+                self.title = " ⏸"
+                self.status_item.title = f"Inactive (resumes at {start_str})"
+                return
+            elif self._session_id is None and self._pause_until is None:
+                SlouchyApp._start_tracking_session(self)
+
         if self._pause_until is not None:
             if now >= self._pause_until:
                 # Timer expired!
@@ -373,10 +409,12 @@ class SlouchyApp(rumps.App):
 
         # ── Handle audio trigger ──────────────────────────────────
         if tier is not None:
-            self.audio.play_tier(tier)
+            if self.prefs.sound_enabled:
+                self.audio.play_tier(tier)
 
-            tier_names = {1: "gentle", 2: "firm", 3: "nuclear"}
-            _notify("Slouchy", f"[{tier_names[tier]}] Mom is scolding you!")
+            if self.prefs.text_notifications_enabled:
+                tier_names = {1: "gentle", 2: "firm", 3: "nuclear"}
+                _notify("Slouchy", f"[{tier_names[tier]}] Mom is scolding you!")
 
             if slouch_start is not None:
                 log_since = max(slouch_start, self._last_logged_time or slouch_start)
@@ -538,17 +576,21 @@ class SlouchyApp(rumps.App):
             else:
                 item.title = f"○ Camera {i}{' (Default)' if i == 0 else ''}"
 
-    def _open_dashboard(self, _sender):
-        """Render a local HTML dashboard and open it in the default browser."""
-        today_summary = self.tracker.get_today_summary()
-        recent_days = self.tracker.get_recent_days_summary(days=14)
-        recent_events = self.tracker.get_all_events(limit=200)
-        html_doc = render_dashboard_html(today_summary, recent_days, recent_events)
+    def _build_dashboard_html(self) -> str:
+        return render_dashboard_html(
+            self.tracker.get_today_summary(),
+            self.tracker.get_recent_days_summary(days=14),
+            self.tracker.get_all_events(limit=200),
+        )
 
-        fd, path = tempfile.mkstemp(prefix="slouchy_dashboard_", suffix=".html")
-        with os.fdopen(fd, "w") as f:
-            f.write(html_doc)
-        subprocess.run(["open", path], check=False)
+    def _open_dashboard(self, _sender):
+        if self._http_server is not None:
+            subprocess.run(["open", f"http://localhost:{PORT}/"], check=False)
+        else:
+            fd, path = tempfile.mkstemp(prefix="slouchy_dashboard_", suffix=".html")
+            with os.fdopen(fd, "w") as f:
+                f.write(self._build_dashboard_html())
+            subprocess.run(["open", path], check=False)
 
     def _quit(self, _sender):
         """Clean shutdown."""

@@ -23,6 +23,14 @@ if ! command -v python3 &>/dev/null; then
 fi
 
 PY_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PY_OK=$(python3 -c 'import sys; print(int(sys.version_info >= (3, 10)))')
+if [[ "$PY_OK" != "1" ]]; then
+    echo "  ✗ Python $PY_VERSION is too old. Slouchy requires Python 3.10+."
+    echo "    Install a newer version:"
+    echo "      brew install python@3.11"
+    echo "    Then re-run: make install"
+    exit 1
+fi
 echo "  ✓ Python $PY_VERSION found"
 
 # Create venv if needed

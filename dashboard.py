@@ -204,6 +204,61 @@ def render_dashboard_html(
       color: var(--muted);
       font-size: 13px;
     }}
+    .settings-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 10px;
+    }}
+    .setting-row {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .setting-label {{ font-size: 14px; font-weight: 600; }}
+    .setting-hint {{ color: var(--muted); font-size: 12px; margin-top: 2px; }}
+    .toggle {{ position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }}
+    .toggle input {{ opacity: 0; width: 0; height: 0; }}
+    .slider {{
+      position: absolute; cursor: pointer; inset: 0;
+      background: #ccc; border-radius: 22px; transition: .2s;
+    }}
+    .slider:before {{
+      position: absolute; content: "";
+      height: 16px; width: 16px; left: 3px; bottom: 3px;
+      background: white; border-radius: 50%; transition: .2s;
+    }}
+    input:checked + .slider {{ background: #2e8b57; }}
+    input:checked + .slider:before {{ transform: translateX(18px); }}
+    .time-row {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 6px;
+    }}
+    .time-row label {{ font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px; }}
+    .time-inputs {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+    .time-inputs input[type="time"] {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--ink);
+    }}
+    #pref-save-msg {{
+      font-size: 13px;
+      color: var(--good);
+      height: 18px;
+      margin-top: 4px;
+      transition: opacity 0.4s;
+    }}
     .reward-box {{
       background: var(--card);
       border: 1px solid var(--line);
@@ -257,6 +312,49 @@ def render_dashboard_html(
       <div class="card"><div class="k">14-Day Avg Score</div><div class="v">{f"{avg_score:.1f}%" if avg_score is not None else "N/A"}</div></div>
     </div>
 
+    <div class="section-title">Settings</div>
+    <div class="settings-grid">
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Sound Alerts</div>
+          <div class="setting-hint">Play audio on slouch detection</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="pref-sound">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Desktop Notifications</div>
+          <div class="setting-hint">Show macOS notifications</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="pref-notifications">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Active Hours Only</div>
+          <div class="setting-hint">Pause monitoring outside set hours</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="pref-active-hours">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="time-row">
+      <label>Active Hours Window</label>
+      <div class="time-inputs">
+        <input type="time" id="pref-hours-start" />
+        <span>to</span>
+        <input type="time" id="pref-hours-end" />
+      </div>
+    </div>
+    <div id="pref-save-msg"></div>
+
     <div class="section-title">Rewards</div>
     <div class="reward-box">
       <div><strong>{reward_points} points</strong> earned today</div>
@@ -296,7 +394,73 @@ def render_dashboard_html(
       </tbody>
     </table>
     <p class="hint">Score = max(0, monitoring - slouch) / monitoring, capped at 100%.</p>
+
   </div>
+  <script>
+  (function() {{
+    function minsToTime(m) {{
+      return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    }}
+    function timeToMins(t) {{
+      var parts = t.split(':');
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }}
+
+    var saveMsg = document.getElementById('pref-save-msg');
+    var saveTimer = null;
+
+    function showSaved() {{
+      saveMsg.textContent = 'Settings saved.';
+      saveMsg.style.opacity = '1';
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function() {{ saveMsg.style.opacity = '0'; }}, 2000);
+    }}
+
+    function loadPrefs() {{
+      fetch('/api/preferences')
+        .then(function(r) {{ return r.json(); }})
+        .then(function(p) {{
+          document.getElementById('pref-sound').checked = !!p.sound_enabled;
+          document.getElementById('pref-notifications').checked = !!p.text_notifications_enabled;
+          document.getElementById('pref-active-hours').checked = !!p.active_hours_enabled;
+          document.getElementById('pref-hours-start').value = minsToTime(p.active_hours_start);
+          document.getElementById('pref-hours-end').value = minsToTime(p.active_hours_end);
+        }})
+        .catch(function() {{
+          saveMsg.textContent = 'Could not load settings — open dashboard from the app.';
+          saveMsg.style.opacity = '1';
+        }});
+    }}
+
+    function savePrefs() {{
+      var startVal = document.getElementById('pref-hours-start').value;
+      var endVal = document.getElementById('pref-hours-end').value;
+      var payload = {{
+        sound_enabled: document.getElementById('pref-sound').checked,
+        text_notifications_enabled: document.getElementById('pref-notifications').checked,
+        active_hours_enabled: document.getElementById('pref-active-hours').checked,
+        active_hours_start: startVal ? timeToMins(startVal) : 540,
+        active_hours_end: endVal ? timeToMins(endVal) : 1080,
+      }};
+      fetch('/api/preferences', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify(payload),
+      }}).then(function(r) {{
+        if (r.ok) showSaved();
+      }});
+    }}
+
+    ['pref-sound', 'pref-notifications', 'pref-active-hours'].forEach(function(id) {{
+      document.getElementById(id).addEventListener('change', savePrefs);
+    }});
+    ['pref-hours-start', 'pref-hours-end'].forEach(function(id) {{
+      document.getElementById(id).addEventListener('change', savePrefs);
+    }});
+
+    loadPrefs();
+  }})();
+  </script>
 </body>
 </html>
 """
