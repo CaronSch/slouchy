@@ -160,6 +160,7 @@ class TestMonitoringStatusReset:
         app._run_detector = lambda: None
         app._poll_timer = SimpleNamespace(start=lambda: None)
         app._refresh_monitoring_menu = lambda: None
+        app._acquire_camera = lambda: None
 
         SlouchyApp._start_monitoring(app)
 
@@ -182,6 +183,7 @@ class TestPollingLifecycle:
         app._detector_thread = None
         app._poll_timer = SimpleNamespace(start=MagicMock())
         app._refresh_monitoring_menu = lambda: None
+        app._acquire_camera = lambda: None
 
         SlouchyApp._start_monitoring(app)
 
@@ -194,9 +196,11 @@ class TestPollingLifecycle:
         app.detector = SimpleNamespace(stop=lambda: None)
         app._streak_start = None
         app._session_id = None
+        app._detector_thread = None
         app.title = ""
         app.status_item = SimpleNamespace(title="")
         app._refresh_monitoring_menu = lambda: None
+        app._release_camera = lambda: None
         app.tracker = SimpleNamespace(log_good_streak=lambda *_: None, end_session=lambda *_: None)
 
         SlouchyApp._stop_monitoring(app)

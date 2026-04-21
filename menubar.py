@@ -276,6 +276,19 @@ class SlouchyApp(rumps.App):
 
         threading.Thread(target=_onboard, daemon=True).start()
 
+    def _release_camera(self):
+        """Stop the detector thread and release the camera."""
+        if self._detector_thread is not None:
+            self.detector.stop()
+            self._detector_thread.join(timeout=0.5)
+            self._detector_thread = None
+
+    def _acquire_camera(self):
+        """Start a fresh detector thread (re-opens the camera)."""
+        if self._detector_thread is None:
+            self._detector_thread = threading.Thread(target=self._run_detector, daemon=True)
+            self._detector_thread.start()
+
     def _start_monitoring(self):
         """Start posture detection and mark monitoring as active."""
         if self._monitoring:
@@ -288,9 +301,7 @@ class SlouchyApp(rumps.App):
         self._last_logged_time = None
         self._streak_start = time.monotonic()
 
-        # Start camera+ML on daemon thread
-        self._detector_thread = threading.Thread(target=self._run_detector, daemon=True)
-        self._detector_thread.start()
+        self._acquire_camera()
 
         self._refresh_monitoring_menu()
 
@@ -306,7 +317,7 @@ class SlouchyApp(rumps.App):
             return
 
         self._monitoring = False
-        self.detector.stop()
+        self._release_camera()
 
         # Log final streak
         if self._streak_start is not None:
@@ -366,17 +377,20 @@ class SlouchyApp(rumps.App):
             ):
                 if self._session_id is not None:
                     SlouchyApp._end_tracking_session(self)
+                self._release_camera()
                 start_str = minutes_to_timestr(self.prefs.active_hours_start)
                 self.title = " ⏸"
                 self.status_item.title = f"Inactive (resumes at {start_str})"
                 return
             elif self._session_id is None and self._pause_until is None:
+                self._acquire_camera()
                 SlouchyApp._start_tracking_session(self)
 
         if self._pause_until is not None:
             if now >= self._pause_until:
                 # Timer expired!
                 self._pause_until = None
+                self._acquire_camera()
                 if self._session_id is None:
                     SlouchyApp._start_tracking_session(self)
                 self._refresh_monitoring_menu()
@@ -506,6 +520,7 @@ class SlouchyApp(rumps.App):
             self.status_item.title = "Monitoring resumed"
         else:
             self._pause_until = None
+            self._acquire_camera()
             if self._session_id is None:
                 SlouchyApp._start_tracking_session(self)
             self.status_item.title = "Monitoring resumed"
@@ -537,6 +552,7 @@ class SlouchyApp(rumps.App):
             self._pause_until = now + (minutes_to_pause * 60)
             self.status_item.title = f"Paused for {minutes_to_pause}m"
         SlouchyApp._end_tracking_session(self)
+        self._release_camera()
         self._refresh_monitoring_menu()
 
     def _recalibrate(self, _sender):
