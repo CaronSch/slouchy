@@ -38,7 +38,7 @@ python menubar.py
 ```
 
 A small icon appears in your macOS menubar. Its symbol changes by state
-(`✓` good posture, `⚠` slouching, `❓` tracking lost, `❌` camera issue, `⏸` paused).
+(`✓` good posture, `⚠` slouching, `❓` tracking lost, `❌` camera issue, `⏸` paused, `~` motion detected).
 
 ### Download DMG directly
 - Portfolio: [Slouchy Download Page](https://nidhisingh.pages.dev/slouchy)
@@ -109,6 +109,14 @@ Raw values are **EMA-smoothed** and require a **3-frame bad streak** to enter sl
 **8-frame good streak** to recover
 (hysteresis), so single noisy frames don't flip the state.
 
+### Motion detection
+
+When the laptop is picked up or resting on a lap, posture monitoring automatically
+pauses. Motion is detected by measuring frame-to-frame pixel differences in the webcam
+feed — since the camera is attached to the lid, any laptop movement shifts the entire
+scene. Monitoring resumes within ~1 second once the laptop is stationary again.
+The sensitivity threshold is configurable via `MOTION_FRAME_DIFF_THRESHOLD` in `config.py`.
+
 ### 3. Escalation (State Machine)
 
 ```
@@ -161,7 +169,7 @@ Other generators are still available:
 # Run the full test suite
 make test
 
-# 83 tests across posture, escalation, audio, tracker, dashboard, and menubar modules
+# 98 tests across posture, escalation, audio, tracker, dashboard, menubar, and motion modules
 ```
 
 ## Privacy
