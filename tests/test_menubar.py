@@ -119,6 +119,7 @@ class TestConfidenceGate:
             slouch_start_time=None,
             camera_available=True,
             landmark_confidence=confidence,
+            in_motion=False,
         )
         app.engine = SimpleNamespace(update=lambda *_: None)
         app.audio = SimpleNamespace(play_tier=lambda *_: None)

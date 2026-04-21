@@ -135,10 +135,14 @@ class Slouchy:
             slouch_start = self.shared_state.slouch_start_time
             camera_ok = self.shared_state.camera_available
             confidence = self.shared_state.landmark_confidence
+            in_motion = self.shared_state.in_motion
 
         if not camera_ok:
             return
         if confidence < 0.5:
+            return
+        if in_motion:
+            print("  ~ Moving...")
             return
 
         now = time.monotonic()

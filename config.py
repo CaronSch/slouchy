@@ -72,6 +72,20 @@ MODEL_URL = (
     "pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
 )
 
+# Motion detection (camera frame-difference based).
+# CoreMotion is unavailable on native macOS apps, so motion is detected by
+# measuring mean pixel changes between consecutive webcam frames.
+# The camera is attached to the lid, so laptop movement = whole-scene shift.
+#
+# Typical mean absolute diff values (pixels, 0–255):
+#   Desk, user still:        1–4
+#   Desk, user typing/moving: 5–15
+#   Laptop on lap (rocking): 15–35
+#   Walking:                 40–200
+MOTION_FRAME_DIFF_THRESHOLD = 20.0   # mean pixel change above which motion is declared
+MOTION_FRAME_DIFF_WINDOW = 10        # number of frames in the rolling average (~1 s at 10 Hz)
+MOTION_MIN_FRAME_DIFF_SAMPLES = 3    # frames required before a motion verdict is issued
+
 # Database (must be outside the read-only .app bundle)
 DB_PATH = os.path.expanduser("~/.slouchy/posture.db")
 

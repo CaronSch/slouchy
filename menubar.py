@@ -300,7 +300,7 @@ class SlouchyApp(rumps.App):
 
         SlouchyApp._end_tracking_session(self)
 
-        self.title = " ⏸ Paused"
+        self.title = " ⏸ "
         self.status_item.title = "Paused"
         self._refresh_monitoring_menu()
 
@@ -349,7 +349,7 @@ class SlouchyApp(rumps.App):
                 # Still paused
                 SlouchyApp._end_tracking_session(self)
                 remaining = self._pause_until - now
-                self.title = f" ⏸ Paused ({_format_minutes(remaining)})"
+                self.title = f" ⏸ ({_format_minutes(remaining)})"
                 return
 
         with self.shared_state.lock:
@@ -357,6 +357,12 @@ class SlouchyApp(rumps.App):
             slouch_start = self.shared_state.slouch_start_time
             camera_ok = self.shared_state.camera_available
             confidence = self.shared_state.landmark_confidence
+            in_motion = self.shared_state.in_motion
+
+        if in_motion:
+            self.title = " ~"
+            self.status_item.title = "Paused (in motion)"
+            return
 
         if not camera_ok:
             self.title = " ❌ Camera Error"

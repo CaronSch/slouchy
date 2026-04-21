@@ -34,6 +34,7 @@ from config import (
     SLOUCH_EXIT_STREAK,
     SHOULDER_ROLL_THRESHOLD,
 )
+from motion import MotionDetector
 
 
 def _ema(current: float, prev: float | None, alpha: float = EMA_ALPHA) -> float:
@@ -67,6 +68,7 @@ class SharedState:
     landmark_confidence: float = 1.0
     camera_available: bool = True
     is_calibrated: bool = False
+    in_motion: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -110,6 +112,10 @@ class PostureDetector:
         self._ema_shoulder_roll: float | None = None
         self._ema_eye_tilt: float | None = None
         self._ema_chin_ratio: float | None = None
+
+        # Motion detector (pauses posture checks while laptop is moving)
+        self._motion_detector = MotionDetector()
+        self._motion_detector.start()
 
         # Shutdown flag
         self._running = threading.Event()
@@ -234,7 +240,17 @@ class PostureDetector:
                 with self.state.lock:
                     self.state.camera_available = True
 
-                self._process_frame(frame)
+                self._motion_detector.feed_frame(frame)
+                in_motion = self._motion_detector.is_in_motion()
+                with self.state.lock:
+                    self.state.in_motion = in_motion
+
+                if not in_motion:
+                    self._process_frame(frame)
+                else:
+                    # Reset bad-frame streak so the hysteresis gate doesn't fire
+                    # the moment motion stops on the next good frame.
+                    self._bad_streak = 0
                 elapsed = time.monotonic() - loop_start
                 remaining = self.poll_interval - elapsed
                 if remaining > 0:
@@ -247,6 +263,7 @@ class PostureDetector:
     def stop(self) -> None:
         """Signal the run loop to exit."""
         self._running.clear()
+        self._motion_detector.stop()
 
     def calibrate(self) -> None:
         """Capture frames for CALIBRATION_DURATION_SECONDS and compute baselines."""
