@@ -36,11 +36,20 @@ Hysteresis (EMA smoothing) → EscalationEngine state machine → AudioPlayer
 
 **`tracker.py`** — SQLite at `~/.slouchy/posture.db` tracking slouch events and sessions. Computes daily/weekly stats, posture scores, streaks.
 
+**`preferences.py`** — `Preferences` dataclass persisted to `~/.slouchy/preferences.json`. Covers sound alerts, desktop notifications, and active-hours scheduling. `load_preferences()` / `save_preferences()` are the only entry points; never write the JSON directly.
+
+**`server.py`** — Minimal stdlib HTTP server on `localhost:47832`. Serves the dashboard on `GET /`; exposes `GET /api/preferences` and `POST /api/preferences` so the browser-based settings panel can read and write preferences. Runs on a daemon thread started at app init. Bound to `127.0.0.1` only.
+
+**`dashboard.py`** — Generates a self-contained HTML page (no Flask, no templates). Called by the server on every `GET /` so stats are always fresh. Includes an interactive Settings section whose JS talks to `/api/preferences`.
+
 **`config.py`** — Single source of truth for all thresholds, timings, paths, and the MediaPipe model URL. Check here before hardcoding any values.
 
 ### Threading Model
 
-The UI poll loop (100ms) runs on the main thread; MediaPipe inference runs on a daemon thread. All cross-thread state passes through `SharedState` guarded by `threading.Lock`.
+Three threads run concurrently:
+- **Main thread** — rumps event loop + 100ms poll timer. Owns all UI mutations.
+- **Detector thread** — MediaPipe inference + OpenCV capture. Writes to `SharedState` under `threading.Lock`. Started/stopped via `_acquire_camera()` / `_release_camera()`; camera is released when monitoring is paused or outside active hours.
+- **HTTP server thread** — Serves dashboard HTML and handles preference API requests. Reads tracker (SQLite `check_same_thread=False`) and mutates `Preferences` under `_prefs_lock`.
 
 ### Calibration
 

@@ -40,6 +40,8 @@ python menubar.py
 A small icon appears in your macOS menubar. Its symbol changes by state
 (`✓` good posture, `⚠` slouching, `❓` tracking lost, `❌` camera issue, `⏸` paused).
 
+Click **Open Dashboard** in the menu to open a live stats page in your browser. The dashboard shows today's monitoring time, posture score, streak, rewards, and 14-day history. A **Settings** panel at the bottom lets you toggle sound alerts, desktop notifications, and active-hours scheduling — changes take effect immediately without restarting the app.
+
 ### Download DMG directly
 - Portfolio: [Slouchy Download Page](https://nidhisingh.pages.dev/slouchy)
 - GitHub Releases: [View GitHub Releases](https://github.com/nidhi-singh02/slouchy/releases)
