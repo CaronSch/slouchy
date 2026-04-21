@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 """
 
+_SCHEMA_ABSENCE_PERIODS = """
+CREATE TABLE IF NOT EXISTS absence_periods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_time REAL NOT NULL,
+    end_time REAL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+"""
+
 
 class PostureTracker:
     """Records slouch events and sessions in a local SQLite database."""
@@ -56,7 +65,7 @@ class PostureTracker:
 
     def _create_tables(self):
         cur = self._conn.cursor()
-        cur.executescript(_SCHEMA_SLOUCH_EVENTS + _SCHEMA_SESSIONS)
+        cur.executescript(_SCHEMA_SLOUCH_EVENTS + _SCHEMA_SESSIONS + _SCHEMA_ABSENCE_PERIODS)
         self._conn.commit()
 
     def _compute_monitoring_seconds_by_day(
@@ -385,6 +394,150 @@ class PostureTracker:
                 }
             )
             day += one_day
+        return result
+
+    def start_absence(self, timestamp=None):
+        """Record the start of an absence period (no pose detected).
+
+        Automatically closes any previously open absence period first, so it is
+        safe to call even if a prior absence was never explicitly ended.
+        Returns the new row id, or None on failure.
+        """
+        now = timestamp if timestamp is not None else time.time()
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE absence_periods SET end_time = ? WHERE end_time IS NULL",
+                (now,),
+            )
+            cur.execute(
+                "INSERT INTO absence_periods (start_time) VALUES (?)",
+                (now,),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as exc:
+            print(f"[tracker] failed to start absence: {exc}", file=sys.stderr)
+            return None
+
+    def end_absence(self, absence_id, timestamp=None):
+        """Record the end of an absence period. Returns True on success."""
+        now = timestamp if timestamp is not None else time.time()
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE absence_periods SET end_time = ? WHERE id = ? AND end_time IS NULL",
+                (now, absence_id),
+            )
+            self._conn.commit()
+            return True
+        except sqlite3.Error as exc:
+            print(f"[tracker] failed to end absence {absence_id}: {exc}", file=sys.stderr)
+            return False
+
+    def get_today_hourly_stats(self, date=None):
+        """Return per-hour posture stats for a single calendar day (24 buckets).
+
+        Each bucket covers one clock hour (0–23).  Hours with no monitoring
+        have monitoring_seconds=0 and posture_score=100.0 by convention.
+        """
+        if date is None:
+            date = datetime.date.today()
+
+        day_start_dt = datetime.datetime.combine(date, datetime.time.min)
+        day_start_ts = day_start_dt.timestamp()
+        day_end_ts = datetime.datetime.combine(date, datetime.time.max).timestamp()
+
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                """
+                SELECT start_time, COALESCE(end_time, ?) AS end_time
+                FROM sessions
+                WHERE start_time <= ? AND COALESCE(end_time, ?) >= ?
+                """,
+                (time.time(), day_end_ts, time.time(), day_start_ts),
+            )
+            sessions = cur.fetchall()
+        except sqlite3.Error as exc:
+            print(f"[tracker] failed to query sessions for hourly stats: {exc}", file=sys.stderr)
+            sessions = []
+
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                "SELECT timestamp, duration FROM slouch_events WHERE timestamp >= ? AND timestamp <= ?",
+                (day_start_ts, day_end_ts),
+            )
+            events = cur.fetchall()
+        except sqlite3.Error as exc:
+            print(f"[tracker] failed to query events for hourly stats: {exc}", file=sys.stderr)
+            events = []
+
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                """
+                SELECT start_time, COALESCE(end_time, ?) AS end_time
+                FROM absence_periods
+                WHERE start_time <= ? AND COALESCE(end_time, ?) >= ?
+                """,
+                (time.time(), day_end_ts, time.time(), day_start_ts),
+            )
+            absences = cur.fetchall()
+        except sqlite3.Error as exc:
+            print(f"[tracker] failed to query absences for hourly stats: {exc}", file=sys.stderr)
+            absences = []
+
+        result = []
+        for hour in range(24):
+            hour_start = (day_start_dt + datetime.timedelta(hours=hour)).timestamp()
+            hour_end = (day_start_dt + datetime.timedelta(hours=hour + 1)).timestamp()
+
+            monitoring = 0.0
+            for row in sessions:
+                s = float(row["start_time"])
+                e = float(row["end_time"])
+                overlap = min(e, hour_end) - max(s, hour_start)
+                if overlap > 0:
+                    monitoring += overlap
+
+            absence_seconds = 0.0
+            for ab in absences:
+                s = float(ab["start_time"])
+                e = float(ab["end_time"])
+                overlap = min(e, hour_end) - max(s, hour_start)
+                if overlap > 0:
+                    absence_seconds += overlap
+            absence_seconds = min(absence_seconds, monitoring)
+
+            present_seconds = max(0.0, monitoring - absence_seconds)
+
+            slouch_seconds = 0.0
+            event_count = 0
+            for evt in events:
+                ts = float(evt["timestamp"])
+                if hour_start <= ts < hour_end:
+                    slouch_seconds += float(evt["duration"])
+                    event_count += 1
+
+            posture_score = 100.0
+            if present_seconds > 0:
+                good_time = max(0.0, present_seconds - slouch_seconds)
+                posture_score = min(100.0, (good_time / present_seconds) * 100.0)
+
+            result.append(
+                {
+                    "hour": hour,
+                    "monitoring_seconds": monitoring,
+                    "absence_seconds": absence_seconds,
+                    "present_seconds": present_seconds,
+                    "slouch_seconds": slouch_seconds,
+                    "event_count": event_count,
+                    "posture_score": round(posture_score, 1),
+                }
+            )
+
         return result
 
     def log_good_streak(self, timestamp, duration):

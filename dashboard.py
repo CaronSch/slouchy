@@ -28,10 +28,85 @@ def _tier_label(tier: int) -> str:
     return labels.get(tier, f"Reminder ({tier})")
 
 
+def _render_hourly_chart(hourly_data: list[dict[str, Any]]) -> str:
+    """Return an inline SVG bar chart of per-hour posture scores."""
+    chart_w = 960
+    chart_h = 120
+    label_h = 30
+    bar_unit = chart_w / 24
+    bar_w = bar_unit - 2
+
+    parts: list[str] = []
+
+    # Faint guide lines at 50% and 100% height
+    parts.append(
+        f'<line x1="0" y1="0" x2="{chart_w}" y2="0" stroke="#d9d0bf" stroke-width="1"/>'
+    )
+    parts.append(
+        f'<line x1="0" y1="{chart_h * 0.5:.1f}" x2="{chart_w}" y2="{chart_h * 0.5:.1f}"'
+        f' stroke="#d9d0bf" stroke-width="0.5" stroke-dasharray="4,4"/>'
+    )
+    parts.append(
+        f'<line x1="0" y1="{chart_h}" x2="{chart_w}" y2="{chart_h}" stroke="#d9d0bf" stroke-width="1"/>'
+    )
+
+    for item in hourly_data:
+        h = item["hour"]
+        score = float(item["posture_score"])
+        monitoring = float(item["monitoring_seconds"])
+        absence = float(item.get("absence_seconds", 0.0))
+        present = float(item.get("present_seconds", monitoring))
+        events = int(item["event_count"])
+        x = h * bar_unit + 1
+
+        is_absent = monitoring > 30 and present < 60
+        if is_absent:
+            # Monitored but no one detected — show a small gray stub
+            stub_h = chart_h * 0.28
+            stub_y = chart_h - stub_h
+            abs_min = int(absence / 60)
+            label = f"{h:02d}:00 — Absent ({abs_min}m undetected)"
+            parts.append(
+                f'<rect x="{x:.1f}" y="{stub_y:.1f}" width="{bar_w:.1f}" height="{stub_h:.1f}"'
+                f' fill="#b4aba0" rx="2" opacity="0.75"><title>{html.escape(label)}</title></rect>'
+            )
+        elif present > 0:
+            bh = max(2.0, (score / 100.0) * chart_h)
+            by = chart_h - bh
+            fill = "#2e8b57" if score >= 90 else ("#b5751d" if score >= 70 else "#a33a2f")
+            label = f"{h:02d}:00 — {score:.0f}% posture, {events} event{'s' if events != 1 else ''}"
+            parts.append(
+                f'<rect x="{x:.1f}" y="{by:.1f}" width="{bar_w:.1f}" height="{bh:.1f}"'
+                f' fill="{fill}" rx="2"><title>{html.escape(label)}</title></rect>'
+            )
+        else:
+            parts.append(
+                f'<rect x="{x:.1f}" y="0" width="{bar_w:.1f}" height="{chart_h}"'
+                f' fill="#e9dfcc" rx="2" opacity="0.4"/>'
+            )
+
+        if h % 3 == 0:
+            hour_12 = h % 12 or 12
+            ampm = "am" if h < 12 else "pm"
+            lx = x + bar_unit / 2 - 1
+            parts.append(
+                f'<text x="{lx:.1f}" y="{chart_h + 20}" text-anchor="middle"'
+                f' font-size="11" fill="#6b777a">{hour_12}{ampm}</text>'
+            )
+
+    total_h = chart_h + label_h
+    inner = "\n    ".join(parts)
+    return (
+        f'<svg viewBox="0 0 {chart_w} {total_h}" xmlns="http://www.w3.org/2000/svg"'
+        f' style="width:100%;display:block;">\n  <g>\n    {inner}\n  </g>\n</svg>'
+    )
+
+
 def render_dashboard_html(
     today_summary: dict[str, Any],
     recent_days: list[dict[str, Any]],
     recent_events: list[dict[str, Any]],
+    today_hourly: list[dict[str, Any]] | None = None,
 ) -> str:
     generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     today_iso = datetime.date.today().isoformat()
@@ -113,6 +188,16 @@ def render_dashboard_html(
         badges.append("Streak Builder")
     if not badges:
         badges.append("Getting Started")
+
+    chart_section = ""
+    if today_hourly:
+        chart_svg = _render_hourly_chart(today_hourly)
+        chart_section = f"""
+    <div class="section-title">Today&#8217;s Activity</div>
+    <div class="chart-box">
+      <div class="hint" style="margin-bottom:6px;">Posture score by hour (present time only) — green ≥90%, orange ≥70%, red &lt;70%, gray = absent</div>
+      {chart_svg}
+    </div>"""
 
     return f"""<!doctype html>
 <html lang="en">
@@ -241,6 +326,13 @@ def render_dashboard_html(
       width: {goal_pct:.1f}%;
       background: linear-gradient(90deg, #2e8b57, #75b97b);
     }}
+    .chart-box {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px 8px;
+      margin-bottom: 12px;
+    }}
   </style>
 </head>
 <body>
@@ -271,6 +363,8 @@ def render_dashboard_html(
         {"".join(f'<span class="reward-pill">{html.escape(b)}</span>' for b in badges)}
       </div>
     </div>
+
+    {chart_section}
 
     <div class="section-title">History (Previous 14 Days)</div>
     <table>

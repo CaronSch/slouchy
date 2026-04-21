@@ -126,6 +126,7 @@ class SlouchyApp(rumps.App):
         self._last_logged_time: float | None = None
         self._streak_start: float | None = None
         self._pause_until: float | None = None
+        self._absence_id: int | None = None
 
         # ── Menu items ────────────────────────────────────────────────
         self.status_item = rumps.MenuItem("Not monitoring", callback=None)
@@ -298,6 +299,7 @@ class SlouchyApp(rumps.App):
                 self.tracker.log_good_streak(time.time(), duration)
             self._streak_start = None
 
+        SlouchyApp._end_absence(self)
         SlouchyApp._end_tracking_session(self)
 
         self.title = " ⏸ Paused"
@@ -327,6 +329,12 @@ class SlouchyApp(rumps.App):
             self._session_id = None
         self._session_start = None
 
+    def _end_absence(self) -> None:
+        """Close the active absence period, if any."""
+        if self._absence_id is not None:
+            self.tracker.end_absence(self._absence_id, time.time())
+            self._absence_id = None
+
     # ══════════════════════════════════════════════════════════════════
     # Poll callback (runs on rumps timer)
     # ══════════════════════════════════════════════════════════════════
@@ -347,6 +355,7 @@ class SlouchyApp(rumps.App):
                 _notify("Slouchy", "Pause ended. Resuming posture monitoring!")
             else:
                 # Still paused
+                SlouchyApp._end_absence(self)
                 SlouchyApp._end_tracking_session(self)
                 remaining = self._pause_until - now
                 self.title = f" ⏸ Paused ({_format_minutes(remaining)})"
@@ -357,16 +366,28 @@ class SlouchyApp(rumps.App):
             slouch_start = self.shared_state.slouch_start_time
             camera_ok = self.shared_state.camera_available
             confidence = self.shared_state.landmark_confidence
+            in_motion = self.shared_state.in_motion
+
+        if in_motion:
+            self._end_absence()
+            self.title = " ~"
+            self.status_item.title = "Paused (in motion)"
+            return
 
         if not camera_ok:
+            self._end_absence()
             self.title = " ❌ Camera Error"
             self.status_item.title = "Camera unavailable"
             return
 
         if confidence < LANDMARK_CONFIDENCE_MIN:
+            if self._absence_id is None:
+                self._absence_id = self.tracker.start_absence(time.time())
             self.title = " ❓"
             self.status_item.title = "Tracking lost (stay in frame)"
             return
+        else:
+            self._end_absence()
 
         now = time.monotonic()
         tier = self.engine.update(is_slouching, slouch_start, now)
@@ -543,7 +564,8 @@ class SlouchyApp(rumps.App):
         today_summary = self.tracker.get_today_summary()
         recent_days = self.tracker.get_recent_days_summary(days=14)
         recent_events = self.tracker.get_all_events(limit=200)
-        html_doc = render_dashboard_html(today_summary, recent_days, recent_events)
+        today_hourly = self.tracker.get_today_hourly_stats()
+        html_doc = render_dashboard_html(today_summary, recent_days, recent_events, today_hourly)
 
         fd, path = tempfile.mkstemp(prefix="slouchy_dashboard_", suffix=".html")
         with os.fdopen(fd, "w") as f:

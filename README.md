@@ -59,6 +59,16 @@ open /Applications/Slouchy.app
 You only need to do this once per downloaded build.
 
 
+### Dashboard
+
+Click **Open Dashboard** in the menubar menu to open a browser-based daily summary:
+
+- **Summary cards** — today's monitoring time, slouch time, event count, and posture score
+- **Rewards** — points, daily goal progress, streak counter, and earned badges
+- **Today's Activity chart** — hourly bar chart of posture score; bars are green (≥90%), orange (≥70%), or red (<70%); hours where no person was detected appear as gray stubs so overnight monitoring doesn't inflate your score
+- **14-day history table**
+- **Recent slouch events log**
+
 ### Terminal Mode
 
 ```bash
@@ -108,6 +118,18 @@ closer/further from the camera doesn't trigger false positives.
 Raw values are **EMA-smoothed** and require a **3-frame bad streak** to enter slouch and an
 **8-frame good streak** to recover
 (hysteresis), so single noisy frames don't flip the state.
+
+### Absence Detection
+
+When no person is detected in the webcam feed (low landmark confidence), Slouchy records an **absence period** in the database. The hourly dashboard chart excludes absent time from posture score calculations — only minutes when you were actually present at your desk count toward your score. Absent hours show as gray stubs in the chart rather than inflated 100% green bars.
+
+### Motion detection
+
+When the laptop is picked up or resting on a lap, posture monitoring automatically
+pauses. Motion is detected by measuring frame-to-frame pixel differences in the webcam
+feed — since the camera is attached to the lid, any laptop movement shifts the entire
+scene. Monitoring resumes within ~1 second once the laptop is stationary again.
+The sensitivity threshold is configurable via `MOTION_FRAME_DIFF_THRESHOLD` in `config.py`.
 
 ### 3. Escalation (State Machine)
 
@@ -168,6 +190,6 @@ make test
 
 - Video frames are **never stored or transmitted**. Processing happens in-memory.
 - The SQLite database (`~/.slouchy/posture.db`) stores only timestamps, durations,
-  and tier numbers — no images, no landmarks, no personal data.
+  tier numbers, and absence period intervals — no images, no landmarks, no personal data.
 - Calibration data (`~/.slouchy/calibration.json`) contains only numeric
   baseline ratios — not biometric data.
